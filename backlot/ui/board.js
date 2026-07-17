@@ -291,6 +291,43 @@ function openNarrModal(card) {
   modal.classList.add("open");
 }
 
+function openAssetPreview(projectId, asset, card, takeIndex = null) {
+  if (!asset || !asset.exists || asset.type !== "image") return;
+
+  const originalURL = mediaURL(projectId, asset.path);
+  const title = takeIndex == null
+    ? `${sceneLabel(card.id)} · CURRENT VISUAL`
+    : `${sceneLabel(card.id)} · TAKE ${takeIndex + 1} OF ${card.takes.length}`;
+  const details = [
+    asset.id,
+    asset.model || asset.source_tool,
+    asset.resolution,
+    asset.cost_usd != null ? fmtMoney(asset.cost_usd) : null,
+    asset.quality_score != null ? `quality ${asset.quality_score}` : null,
+  ].filter(Boolean).join(" · ");
+
+  modal.innerHTML = "";
+  modal.append(
+    el("span", { class: "modal-close", onclick: closeModal }, "ESC · CLOSE"),
+    el("div", { class: "asset-modal" },
+      el("div", { class: "asset-modal-head" },
+        el("div", {},
+          el("div", { class: "asset-modal-title" }, title),
+          details ? el("div", { class: "asset-modal-meta" }, details) : null),
+        el("a", {
+          class: "asset-original-link",
+          href: originalURL,
+          target: "_blank",
+          rel: "noopener",
+        }, "OPEN ORIGINAL ↗")),
+      el("div", { class: "asset-preview" },
+        el("img", { src: originalURL, alt: asset.id || title })),
+      asset.path ? el("div", { class: "asset-modal-path" }, asset.path) : null,
+    ),
+  );
+  modal.classList.add("open");
+}
+
 function closeModal() { modal.classList.remove("open"); }
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
 modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
@@ -444,8 +481,22 @@ function sceneCard(s, card) {
           el("div", { class: "spec-desc" }, card.description || "asset unavailable"),
           el("div", { class: "spec-shot" }, [card.framing, card.movement].filter(Boolean).join(" · ").slice(0, 70))));
       };
-      thumb = el("div", { class: "thumb approved" }, img,
-        v.snapshot ? el("span", { class: "badge" }, "snapshot") : (badge ? el("span", { class: "badge" }, badge) : null));
+      const openPreview = () => openAssetPreview(s.project_id, v, card);
+      thumb = el("div", {
+        class: "thumb approved inspectable",
+        role: "button",
+        tabindex: "0",
+        title: "Click to preview full-size image",
+        onclick: openPreview,
+        onkeydown: (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            openPreview();
+          }
+        },
+      }, img,
+      v.snapshot ? el("span", { class: "badge" }, "snapshot") : (badge ? el("span", { class: "badge" }, badge) : null),
+      el("span", { class: "inspect-hint" }, "⤢ PREVIEW"));
     }
   } else if (card.type === "animation") {
     // Bespoke/atelier scene with no snapshot yet — name it as such rather
@@ -496,8 +547,19 @@ function sceneCard(s, card) {
         || (t.path && t.path === card.visual.path)
         || (t.id && t.id === card.visual.id)
       );
-      const tk = el("span", { class: `tk${isActive ? " active" : ""}`, title: `take ${i + 1}` });
-      if (t.exists && t.type === "image") tk.append(el("img", { src: thumbURL(s.project_id, t.path, 320), loading: "lazy", alt: "" }));
+      const inspectable = t.exists && t.type === "image";
+      const tk = el("button", {
+        class: `tk${isActive ? " active" : ""}`,
+        type: "button",
+        title: inspectable ? `Preview take ${i + 1}` : `Take ${i + 1}`,
+        onclick: inspectable ? () => openAssetPreview(s.project_id, t, card, i) : null,
+        disabled: inspectable ? null : "",
+      });
+      if (inspectable) tk.append(el("img", {
+        src: thumbURL(s.project_id, t.path, 320),
+        loading: "lazy",
+        alt: `take ${i + 1}`,
+      }));
       takes.append(tk);
     });
     takes.append(el("span", { class: "tk-label" }, `${card.takes.length} TAKES`));
